@@ -1,0 +1,24 @@
+#!/bin/sh
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+xrdb $HOME/.Xresources
+xsetroot -solid grey
+export XKL_XMODMAP_DISABLE=1
+  
+#openbox &
+#/usr/bin/lxsession -s Lubuntu &
+# Error:
+# main.vala:103 DE is (null)
+# main.vala:113 No desktop environment set, fallback to LXDE
+# Xlib: extension "RANDR" missing on display :1
+# main.vala.134: log directory /home/username/.cache/lxsession/Lubuntu
+# main.vala.135: log path: /home/username/.cache/lxsession/Lubuntu/run.log
+  
+# Requires: sudo apt install xfce4 xfce4-goodies
+# As of 5/23/20, the packages above are incomplete
+#startxfce4 &
+  
+# Use the light version of desktop environment
+# Requires: sudo apt install xorg lxde-core
+lxterminal &
+/usr/bin/lxsession -s LXDE &
