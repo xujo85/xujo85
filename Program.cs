@@ -7,13 +7,26 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using NAudio.Wave; // Import NAudio for audio handling
-
+using NAudio.Wave;
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using NAudio.Wave;
+using AForge.Math;
 public partial class MainForm : Form
 {
-    private TcpListener listener;
-    private TcpClient client;
-    private NetworkStream stream;
+     private TcpListener videoListener;
+    private TcpListener audioListener;
+    private TcpClient videoClient;
+    private TcpClient audioClient;
+    private NetworkStream videoStream;
+    private NetworkStream audioStream;
     private CancellationTokenSource cts;
     private int selectedDisplayIndex;
     private ImageFormat compressionFormat;
@@ -21,21 +34,21 @@ public partial class MainForm : Form
     private StreamDisplayForm streamDisplayForm;
     private int screenWidth;
     private int screenHeight;
-    private int fps; // Field to store the current FPS value
+    private int fps;
     private IWaveIn waveIn;
     private WaveOutEvent waveOut;
     private BufferedWaveProvider waveProvider;
     private CancellationTokenSource callCts;
+    private System.Windows.Forms.CheckBox chkNoiseCancellation;
 
     public MainForm()
     {
-        
         InitializeComponent();
     }
 
     private void InitializeComponent()
     {
-        
+      ;
         this.rbServer = new System.Windows.Forms.RadioButton();
         this.rbClient = new System.Windows.Forms.RadioButton();
         this.txtIPAddress = new System.Windows.Forms.TextBox();
@@ -58,9 +71,13 @@ public partial class MainForm : Form
         this.trkOutputVolume = new System.Windows.Forms.TrackBar();
         this.lblInputVolume = new System.Windows.Forms.Label();
         this.lblOutputVolume = new System.Windows.Forms.Label();
+        this.txtAudioPort = new System.Windows.Forms.TextBox();
+        this.trkMicrophoneBoost = new System.Windows.Forms.TrackBar();
+        this.lblMicrophoneBoost = new System.Windows.Forms.Label();
         ((System.ComponentModel.ISupportInitialize)(this.trkCompressionLevel)).BeginInit();
         ((System.ComponentModel.ISupportInitialize)(this.trkInputVolume)).BeginInit();
         ((System.ComponentModel.ISupportInitialize)(this.trkOutputVolume)).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)(this.trkMicrophoneBoost)).BeginInit();
         this.SuspendLayout();
 
         // Set the form size to 1024x768
@@ -100,11 +117,18 @@ public partial class MainForm : Form
         this.txtPort.TabIndex = 3;
         this.txtPort.Text = "5000";
 
+        // txtAudioPort
+        this.txtAudioPort.Location = new System.Drawing.Point(196, 35);
+        this.txtAudioPort.Name = "txtAudioPort";
+        this.txtAudioPort.Size = new System.Drawing.Size(59, 20);
+        this.txtAudioPort.TabIndex = 23;
+        this.txtAudioPort.Text = "5001";
+
         // cmbResolution
         this.cmbResolution.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         this.cmbResolution.FormattingEnabled = true;
         this.cmbResolution.Items.AddRange(new object[] {
-            "source",   // Add the "source" option
+            "source",
             "1920x1080",
             "1280x720",
             "1024x768",
@@ -270,6 +294,35 @@ public partial class MainForm : Form
         this.lblOutputVolume.TabIndex = 22;
         this.lblOutputVolume.Text = "Output Volume:";
 
+        // TrackBar for Microphone Boost
+        this.trkMicrophoneBoost.Location = new System.Drawing.Point(12, 420);
+        this.trkMicrophoneBoost.Maximum = 30; // Assuming boost range from 0 to 30 dB
+        this.trkMicrophoneBoost.Name = "trkMicrophoneBoost";
+        this.trkMicrophoneBoost.Size = new System.Drawing.Size(178, 45);
+        this.trkMicrophoneBoost.TabIndex = 24;
+        this.trkMicrophoneBoost.Value = 0; // Default boost 0 dB
+        this.trkMicrophoneBoost.Scroll += new System.EventHandler(this.trkMicrophoneBoost_Scroll);
+
+        // Label for Microphone Boost
+        this.lblMicrophoneBoost.AutoSize = true;
+        this.lblMicrophoneBoost.Location = new System.Drawing.Point(196, 420);
+        this.lblMicrophoneBoost.Name = "lblMicrophoneBoost";
+        this.lblMicrophoneBoost.Size = new System.Drawing.Size(92, 13);
+        this.lblMicrophoneBoost.TabIndex = 25;
+        this.lblMicrophoneBoost.Text = "Microphone Boost:";
+        // Label for noise cancell
+        this.chkNoiseCancellation = new System.Windows.Forms.CheckBox();
+        this.chkNoiseCancellation.AutoSize = true;
+        this.chkNoiseCancellation.Location = new System.Drawing.Point(12, 470);
+        this.chkNoiseCancellation.Name = "chkNoiseCancellation";
+        this.chkNoiseCancellation.Size = new System.Drawing.Size(116, 17);
+        this.chkNoiseCancellation.TabIndex = 26;
+        this.chkNoiseCancellation.Text = "Noise Cancellation";
+        this.chkNoiseCancellation.UseVisualStyleBackColor = true;
+        this.chkNoiseCancellation.CheckedChanged += new System.EventHandler(this.chkNoiseCancellation_CheckedChanged);
+
+        // Add the new controls to the form
+        this.Controls.Add(this.chkNoiseCancellation);
         this.Controls.Add(this.cmbAudioInput);
         this.Controls.Add(this.cmbAudioOutput);
         this.Controls.Add(this.cmbBitrate);
@@ -279,6 +332,9 @@ public partial class MainForm : Form
         this.Controls.Add(this.trkOutputVolume);
         this.Controls.Add(this.lblInputVolume);
         this.Controls.Add(this.lblOutputVolume);
+        this.Controls.Add(this.txtAudioPort);
+        this.Controls.Add(this.trkMicrophoneBoost);
+        this.Controls.Add(this.lblMicrophoneBoost);
 
         // Existing controls...
         this.Controls.Add(this.lblCompressionLevel);
@@ -300,9 +356,11 @@ public partial class MainForm : Form
         ((System.ComponentModel.ISupportInitialize)(this.trkCompressionLevel)).EndInit();
         ((System.ComponentModel.ISupportInitialize)(this.trkInputVolume)).EndInit();
         ((System.ComponentModel.ISupportInitialize)(this.trkOutputVolume)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.trkMicrophoneBoost)).EndInit();
         this.ResumeLayout(false);
         this.PerformLayout();
     }
+
 
     private void MainForm_Load(object sender, EventArgs e)
     {
@@ -354,7 +412,7 @@ public partial class MainForm : Form
         UpdateCompressionFormat();
         Console.WriteLine($"Compression Format Changed: {cmbCompression.SelectedItem}");
     }
-
+    
     private void UpdateCompressionFormat()
     {
         string selectedFormat = cmbCompression.SelectedItem.ToString();
@@ -375,7 +433,8 @@ public partial class MainForm : Form
         }
     }
 
-    private void cmbResolution_SelectedIndexChanged(object sender, EventArgs e)
+
+private void cmbResolution_SelectedIndexChanged(object sender, EventArgs e)
     {
         UpdateResolution();
     }
@@ -421,6 +480,7 @@ public partial class MainForm : Form
         }
     }
 
+
     private void cmbFPS_SelectedIndexChanged(object sender, EventArgs e)
     {
         if (cmbFPS.SelectedItem != null)
@@ -440,52 +500,62 @@ public partial class MainForm : Form
 
         if (rbServer.Checked)
         {
-            await StartServerAsync(cts.Token);
+            // Start video server
+            await StartVideoServerAsync(cts.Token, int.Parse(txtPort.Text));
+            
+            // Start audio server
+            StartVoiceCallServer(cts.Token);
         }
         else
         {
-            await StartClientAsync(cts.Token);
+            // Start video client
+            await StartVideoClientAsync(cts.Token, int.Parse(txtPort.Text));
+            
+            // Start audio client
+            StartVoiceCallClient(cts.Token);
         }
     }
 
-     private async Task StartServerAsync(CancellationToken cancellationToken)
+   
+    private async Task StartVideoServerAsync(CancellationToken cancellationToken, int port)
     {
-        listener = new TcpListener(IPAddress.Parse(txtIPAddress.Text), int.Parse(txtPort.Text));
-        listener.Start();
+        videoListener = new TcpListener(IPAddress.Parse(txtIPAddress.Text), port);
+        videoListener.Start();
 
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                client = await listener.AcceptTcpClientAsync();
-                _ = Task.Run(() => ServerLoopAsync(client, cancellationToken), cancellationToken);
+                videoClient = await videoListener.AcceptTcpClientAsync();
+                _ = Task.Run(() => VideoServerLoopAsync(videoClient, cancellationToken), cancellationToken);
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Server error: {ex.Message}");
+            MessageBox.Show($"Video server error: {ex.Message}");
         }
         finally
         {
-            listener.Stop();
+            videoListener.Stop();
         }
     }
-     private async Task ServerLoopAsync(TcpClient client, CancellationToken cancellationToken)
+
+    private async Task VideoServerLoopAsync(TcpClient client, CancellationToken cancellationToken)
     {
         using (client)
         {
-            stream = client.GetStream();
+            videoStream = client.GetStream();
             while (!cancellationToken.IsCancellationRequested && client.Connected)
             {
                 Bitmap screenshot = CaptureScreen(selectedDisplayIndex);
                 byte[] imageBytes = ImageToByte(screenshot, compressionFormat, compressionQuality);
                 try
                 {
-                    await stream.WriteAsync(imageBytes, 0, imageBytes.Length, cancellationToken);
+                    await videoStream.WriteAsync(imageBytes, 0, imageBytes.Length, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Server stream error: {ex.Message}");
+                    MessageBox.Show($"Video server stream error: {ex.Message}");
                     break;
                 }
                 await Task.Delay(1000 / fps, cancellationToken);
@@ -493,7 +563,8 @@ public partial class MainForm : Form
         }
     }
 
-    private Bitmap CaptureScreen(int displayIndex)
+
+      private Bitmap CaptureScreen(int displayIndex)
     {
         Rectangle bounds = Screen.AllScreens[displayIndex].Bounds;
         Bitmap screenshot = new Bitmap(bounds.Width, bounds.Height);
@@ -544,32 +615,32 @@ public partial class MainForm : Form
         return null;
     }
 
-    private async Task StartClientAsync(CancellationToken cancellationToken)
+      private async Task StartVideoClientAsync(CancellationToken cancellationToken, int port)
     {
-        client = new TcpClient();
+        videoClient = new TcpClient();
         try
         {
-            await client.ConnectAsync(txtIPAddress.Text, int.Parse(txtPort.Text));
-            stream = client.GetStream();
+            await videoClient.ConnectAsync(txtIPAddress.Text, port);
+            videoStream = videoClient.GetStream();
             streamDisplayForm = new StreamDisplayForm();
             streamDisplayForm.Show();
 
-            await ClientLoopAsync(cancellationToken);
+            await VideoClientLoopAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Client error: {ex.Message}");
+            MessageBox.Show($"Video client error: {ex.Message}");
         }
     }
 
-    private async Task ClientLoopAsync(CancellationToken cancellationToken)
+    private async Task VideoClientLoopAsync(CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[1024 * 1024];
-        while (!cancellationToken.IsCancellationRequested && client.Connected)
+        while (!cancellationToken.IsCancellationRequested && videoClient.Connected)
         {
             try
             {
-                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                int bytesRead = await videoStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
                 if (bytesRead > 0)
                 {
                     using (MemoryStream ms = new MemoryStream(buffer, 0, bytesRead))
@@ -581,12 +652,11 @@ public partial class MainForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Client stream error: {ex.Message}");
+                MessageBox.Show($"Video client stream error: {ex.Message}");
                 break;
             }
         }
     }
-
     private void trkInputVolume_Scroll(object sender, EventArgs e)
     {
         // Adjust input volume dynamically if needed
@@ -599,6 +669,7 @@ public partial class MainForm : Form
             waveOut.Volume = trkOutputVolume.Value / 100f;
         }
     }
+
     private async void btnStartCall_Click(object sender, EventArgs e)
     {
         callCts = new CancellationTokenSource();
@@ -617,7 +688,7 @@ public partial class MainForm : Form
         callCts?.Cancel();
     }
 
-    private void StartVoiceCallServer(CancellationToken cancellationToken)
+       private void StartVoiceCallServer(CancellationToken cancellationToken)
     {
         int inputDeviceNumber = cmbAudioInput.SelectedIndex;
         waveIn = new WaveInEvent
@@ -628,31 +699,43 @@ public partial class MainForm : Form
 
         waveIn.DataAvailable += (s, a) =>
         {
-            // Send audio data to clients
-            if (client != null && client.Connected)
+            try
             {
-                byte[] buffer = AdjustVolume(a.Buffer, a.BytesRecorded, trkInputVolume.Value);
-                stream.Write(buffer, 0, buffer.Length);
+                if (audioClient != null && audioClient.Connected)
+                {
+                    byte[] buffer = a.Buffer;
+
+                    // Apply noise cancellation if enabled
+                    if (chkNoiseCancellation.Checked)
+                    {
+                        buffer = ApplyNoiseCancellation(buffer, a.BytesRecorded);
+                    }
+
+                    buffer = AdjustVolume(buffer, a.BytesRecorded, trkInputVolume.Value, trkMicrophoneBoost.Value);
+                    audioStream.Write(buffer, 0, buffer.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error sending audio data: {ex.Message}");
             }
         };
 
         waveIn.StartRecording();
 
-        // Listen for incoming connections
         Task.Run(async () =>
         {
-            listener = new TcpListener(IPAddress.Parse(txtIPAddress.Text), int.Parse(txtPort.Text));
-            listener.Start();
+            audioListener = new TcpListener(IPAddress.Parse(txtIPAddress.Text), int.Parse(txtAudioPort.Text));
+            audioListener.Start();
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                client = await listener.AcceptTcpClientAsync();
-                stream = client.GetStream();
+                audioClient = await audioListener.AcceptTcpClientAsync();
+                audioStream = audioClient.GetStream();
             }
         }, cancellationToken);
     }
-
-   private void StartVoiceCallClient(CancellationToken cancellationToken)
+    private void StartVoiceCallClient(CancellationToken cancellationToken)
     {
         int outputDeviceNumber = cmbAudioOutput.SelectedIndex;
         waveOut = new WaveOutEvent
@@ -665,29 +748,46 @@ public partial class MainForm : Form
         waveOut.Init(waveProvider);
         waveOut.Play();
 
-        // Connect to the server
         Task.Run(async () =>
         {
-            client = new TcpClient();
-            await client.ConnectAsync(txtIPAddress.Text, int.Parse(txtPort.Text));
-            stream = client.GetStream();
+            audioClient = new TcpClient();
+            await audioClient.ConnectAsync(txtIPAddress.Text, int.Parse(txtAudioPort.Text));
+            audioStream = audioClient.GetStream();
 
-            byte[] buffer = new byte[1024];
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                waveProvider.AddSamples(buffer, 0, bytesRead);
-            }
+            await ReceiveAudioData(cancellationToken);
         }, cancellationToken);
     }
-    // Function to adjust volume of audio buffer
-    private byte[] AdjustVolume(byte[] buffer, int bytesRecorded, int volumePercent)
+
+    private async Task ReceiveAudioData(CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[1024];
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                int bytesRead = await audioStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (bytesRead > 0)
+                {
+                    waveProvider.AddSamples(buffer, 0, bytesRead);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Audio client stream error: {ex.Message}");
+                break;
+            }
+        }
+    }
+
+    private byte[] AdjustVolume(byte[] buffer, int bytesRecorded, int volumePercent, int boostDb)
     {
         float volume = volumePercent / 100f;
+        float boostFactor = (float)Math.Pow(10, boostDb / 20.0); // Convert dB to linear scale
+
         for (int i = 0; i < bytesRecorded; i += 2)
         {
             short sample = BitConverter.ToInt16(buffer, i);
-            sample = (short)(sample * volume);
+            sample = (short)(sample * volume * boostFactor);
             byte[] bytes = BitConverter.GetBytes(sample);
             buffer[i] = bytes[0];
             buffer[i + 1] = bytes[1];
@@ -695,13 +795,64 @@ public partial class MainForm : Form
         return buffer;
     }
 
+    private byte[] ApplyNoiseCancellation(byte[] buffer, int bytesRecorded)
+    {
+        // Convert the byte array to a short array for processing
+        short[] samples = new short[bytesRecorded / 2];
+        Buffer.BlockCopy(buffer, 0, samples, 0, bytesRecorded);
+
+        // Use AForge.NET to apply noise cancellation
+        // For simplicity, we'll use a basic noise reduction algorithm
+        // In a real-world application, you may use a more advanced algorithm
+        for (int i = 0; i < samples.Length; i++)
+        {
+            // Simple noise gate
+            if (Math.Abs(samples[i]) < 500) // Threshold for noise
+            {
+                samples[i] = 0;
+            }
+        }
+
+        // Convert the short array back to a byte array
+        Buffer.BlockCopy(samples, 0, buffer, 0, bytesRecorded);
+        return buffer;
+    }
+    
+private void chkNoiseCancellation_CheckedChanged(object sender, EventArgs e)
+    {
+        // Handle noise cancellation enable/disable
+        if (chkNoiseCancellation.Checked)
+        {
+            MessageBox.Show("Noise Cancellation Enabled");
+        }
+        else
+        {
+            MessageBox.Show("Noise Cancellation Disabled");
+        }
+    }
+
+    private void cmbBitrate_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        // Handle bitrate change
+        if (waveIn != null)
+        {
+            waveIn.StopRecording();
+            waveIn.WaveFormat = new WaveFormat(8000, int.Parse(cmbBitrate.SelectedItem.ToString()), 1);
+            waveIn.StartRecording();
+        }
+    }
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         cts?.Cancel();
+        waveIn?.StopRecording();
+        waveOut?.Stop();
 
         base.OnFormClosing(e);
     }
-
+    private void trkMicrophoneBoost_Scroll(object sender, EventArgs e)
+    {
+        lblMicrophoneBoost.Text = $"Microphone Boost: {trkMicrophoneBoost.Value} dB";
+    }
     private System.Windows.Forms.RadioButton rbServer;
     private System.Windows.Forms.RadioButton rbClient;
     private System.Windows.Forms.TextBox txtIPAddress;
@@ -724,10 +875,10 @@ public partial class MainForm : Form
     private System.Windows.Forms.TrackBar trkOutputVolume;
     private System.Windows.Forms.Label lblInputVolume;
     private System.Windows.Forms.Label lblOutputVolume;
+    private System.Windows.Forms.TextBox txtAudioPort;
+    private System.Windows.Forms.TrackBar trkMicrophoneBoost;
+    private System.Windows.Forms.Label lblMicrophoneBoost;
 
-    /// <summary>
-    /// The main entry point for the application.
-    /// </summary>
     [STAThread]
     static void Main()
     {
