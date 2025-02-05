@@ -11,21 +11,9 @@ using System.Windows.Forms;
 using NAudio.Wave;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading;
-using System.Windows.Forms;
-using NAudio.Wave;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+
 namespace VideoStreamingApp
-{   
+{
     public partial class MainForm : Form
     {
         private UdpClient udpClient;
@@ -56,12 +44,11 @@ namespace VideoStreamingApp
         private System.Windows.Forms.Timer screenCaptureTimer;
         private PreviewWindow previewWindow;
         private bool isServer = true;
-        // ... (keep existing field declarations)
-
         private RadioButton radioServer;
         private RadioButton radioClient;
         private TextBox textBoxIPAddress;
-            /// <summary>
+
+        /// <summary>
         /// The main entry point for the application.
         /// </summary>
         [STAThread]
@@ -79,56 +66,8 @@ namespace VideoStreamingApp
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-        /*private void InitializeComponent()
-        {
-            this.Text = "Screen and Audio Streaming App";
-            this.Size = new System.Drawing.Size(800, 600);
 
-            // Screen selection
-            Label labelScreens = new Label { Text = "Select Screen:", Left = 10, Top = 10, Width = 100 };
-            comboBoxScreens = new ComboBox { Left = 120, Top = 10, Width = 200 };
-
-            // Audio device selection
-            Label labelAudioDevices = new Label { Text = "Select Audio:", Left = 10, Top = 50, Width = 100 };
-            comboBoxAudioDevices = new ComboBox { Left = 120, Top = 50, Width = 200 };
-
-            Label labelResolution = new Label { Text = "Resolution:", Left = 10, Top = 90, Width = 100 };
-            comboBoxResolution = new ComboBox { Left = 120, Top = 90, Width = 200 };
-            comboBoxResolution.Items.AddRange(new string[] { "640x480", "1280x720", "1920x1080" });
-            comboBoxResolution.SelectedIndex = 0;
-
-            Label labelCompression = new Label { Text = "Compression:", Left = 10, Top = 130, Width = 100 };
-            trackBarCompression = new TrackBar { Left = 120, Top = 125, Width = 200, Minimum = 10, Maximum = 100, Value = 50 };
-
-            Label labelFPS = new Label { Text = "FPS:", Left = 10, Top = 170, Width = 100 };
-            comboBoxFPS = new ComboBox { Left = 120, Top = 170, Width = 200 };
-            comboBoxFPS.Items.AddRange(new string[] { "15", "30", "60" });
-            comboBoxFPS.SelectedIndex = 1;
-
-            Label labelPort = new Label { Text = "Port:", Left = 10, Top = 210, Width = 100 };
-            textBoxPort = new TextBox { Left = 120, Top = 210, Width = 200, Text = "5000" };
-
-            buttonStart = new Button { Text = "Start Streaming", Left = 10, Top = 250, Width = 310 };
-            buttonStart.Click += ButtonStart_Click;
-
-            pictureBoxPreview = new PictureBox { Left = 350, Top = 10, Width = 400, Height = 300, BorderStyle = BorderStyle.Fixed3D, SizeMode = PictureBoxSizeMode.Zoom };
-
-            this.Controls.AddRange(new Control[] {
-                labelScreens, comboBoxScreens,
-                labelAudioDevices, comboBoxAudioDevices,
-                labelResolution, comboBoxResolution,
-                labelCompression, trackBarCompression,
-                labelFPS, comboBoxFPS,
-                labelPort, textBoxPort,
-                buttonStart, pictureBoxPreview
-            });
-
-            screenCaptureTimer = new System.Windows.Forms.Timer();
-            screenCaptureTimer.Interval = 1000 / 30; // 30 FPS by default
-            screenCaptureTimer.Tick += ScreenCaptureTimer_Tick;
-        }
-    */
-     private void InitializeComponent()
+        private void InitializeComponent()
         {
             this.Text = "Screen and Audio Streaming App";
             this.Size = new System.Drawing.Size(350, 400); // Reduced size since preview is in separate window
@@ -194,13 +133,12 @@ namespace VideoStreamingApp
                 UpdateControlsState();
             };
 
-        
             // Create preview window
             previewWindow = new PreviewWindow();
             previewWindow.Show();
         }
-    
-   private void UpdateControlsState()
+
+        private void UpdateControlsState()
         {
             comboBoxScreens.Enabled = isServer;
             comboBoxAudioDevices.Enabled = isServer;
@@ -208,93 +146,88 @@ namespace VideoStreamingApp
             trackBarCompression.Enabled = isServer;
             comboBoxFPS.Enabled = isServer;
         }
-
-        private void ButtonStart_Click(object sender, EventArgs e)
+             private void ButtonStart_Click(object sender, EventArgs e)
+    {
+        if (!isStreaming)
         {
-            if (!isStreaming)
+            try
             {
-                try
-                {
-                    StartStreaming();
-                    buttonStart.Text = "Stop Streaming";
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error starting stream: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    StopStreaming();
-                }
+                StartStreaming();
+                buttonStart.Text = "Stop Streaming";
             }
-            else
+            catch (Exception ex)
             {
-                try
-                {
-                    StopStreaming();
-                    buttonStart.Text = "Start Streaming";
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error stopping stream: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                MessageBox.Show($"Error starting stream: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                StopStreaming();
             }
         }
+        else
+        {
+            try
+            {
+                StopStreaming();
+                buttonStart.Text = "Start Streaming";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error stopping stream: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+
 
         public MainForm()
         {
-            //InitializeComponent();
-            //InitializeScreens();
-            //InitializeAudioDevices();
-            //InitializeSettings();
-            //InitializeEncryption();
             try
-    {
-        MessageBox.Show("Starting initialization");
-        InitializeComponent();
-        MessageBox.Show("Component initialization complete");
-        
-        try
-        {
-            InitializeScreens();
-            MessageBox.Show("Screens initialized");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Screen initialization failed: {ex.Message}");
-        }
-        
-        try
-        {
-            InitializeAudioDevices();
-            MessageBox.Show("Audio devices initialized");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Audio initialization failed: {ex.Message}");
-        }
-        
-        try
-        {
-            InitializeSettings();
-            MessageBox.Show("Settings initialized");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Settings initialization failed: {ex.Message}");
-        }
-        
-        try
-        {
-            InitializeEncryption();
-            MessageBox.Show("Encryption initialized");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Encryption initialization failed: {ex.Message}");
-        }
-    }
-    catch (Exception ex)
-    {
-        MessageBox.Show($"Main initialization failed: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
-    }
+            {
+                MessageBox.Show("Starting initialization");
+                InitializeComponent();
+                MessageBox.Show("Component initialization complete");
+
+                try
+                {
+                    InitializeScreens();
+                    MessageBox.Show("Screens initialized");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Screen initialization failed: {ex.Message}");
+                }
+
+                try
+                {
+                    InitializeAudioDevices();
+                    MessageBox.Show("Audio devices initialized");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Audio initialization failed: {ex.Message}");
+                }
+
+                try
+                {
+                    InitializeSettings();
+                    MessageBox.Show("Settings initialized");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Settings initialization failed: {ex.Message}");
+                }
+
+                try
+                {
+                    InitializeEncryption();
+                    MessageBox.Show("Encryption initialized");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Encryption initialization failed: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Main initialization failed: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
+            }
         }
 
         private void InitializeScreens()
@@ -321,7 +254,8 @@ namespace VideoStreamingApp
                 comboBoxAudioDevices.SelectedIndex = 0;
             }
         }
-   private void StartStreaming()
+
+        private void StartStreaming()
         {
             try
             {
@@ -341,8 +275,15 @@ namespace VideoStreamingApp
                 StopStreaming();
             }
         }
-  private void StartServerMode()
+
+            private void StartServerMode()
         {
+            if (comboBoxFPS.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a FPS value.");
+                return;
+            }
+            
             isStreaming = true;
             udpClient = new UdpClient();
             screenCaptureTimer.Interval = 1000 / int.Parse(comboBoxFPS.SelectedItem.ToString());
@@ -367,7 +308,8 @@ namespace VideoStreamingApp
             audioReceivingThread = new Thread(() => ReceiveAudioStream(serverIP));
             audioReceivingThread.Start();
         }
-    private void ReceiveVideoStream(IPAddress serverIP)
+
+        private void ReceiveVideoStream(IPAddress serverIP)
         {
             while (isReceiving)
             {
@@ -414,7 +356,7 @@ namespace VideoStreamingApp
                 }
             }
         }
-        
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (isStreaming)
@@ -425,18 +367,16 @@ namespace VideoStreamingApp
             aes?.Dispose();
             base.OnFormClosing(e);
         }
-    }
 
-        private void StopStreaming()
+      private void StopStreaming()
         {
             isStreaming = false;
-            screenCaptureTimer.Stop();
+            screenCaptureTimer?.Stop(); // Use null-conditional operator
             streamingThread?.Abort();
             udpClient?.Close();
             StopAudioStreaming();
             buttonStart.Text = "Start Streaming";
         }
-
         private void SendVideoStream()
         {
             IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Broadcast, int.Parse(textBoxPort.Text));
@@ -449,12 +389,12 @@ namespace VideoStreamingApp
                         EncoderParameters encoderParams = new EncoderParameters(1);
                         encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, selectedCompressionQuality);
                         ImageCodecInfo jpegCodec = ImageCodecInfo.GetImageEncoders()[1];
-                        
+
                         lock (pictureBoxPreview.Image)
                         {
                             pictureBoxPreview.Image.Save(ms, jpegCodec, encoderParams);
                         }
-                        
+
                         byte[] buffer = EncryptData(ms.ToArray());
                         udpClient.Send(buffer, buffer.Length, remoteEndPoint);
                     }
@@ -549,11 +489,10 @@ namespace VideoStreamingApp
             {
                 Thread.Sleep(1);
             }
-       
         }
-}
-}
-  public class PreviewWindow : Form
+    }
+
+    public class PreviewWindow : Form
     {
         private PictureBox pictureBox;
 
@@ -590,3 +529,4 @@ namespace VideoStreamingApp
             base.OnFormClosing(e);
         }
     }
+}
