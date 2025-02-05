@@ -4,526 +4,778 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
-using NAudio.Wave;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using NAudio.Wave; // Import NAudio for audio handling
 
-namespace VideoStreamingApp {
-  public partial class MainForm : Form {
-    private UdpClient udpClient;
-    private UdpClient udpReceiver;
-    private Thread streamingThread;
-    private Thread receivingThread;
-    private bool isStreaming = false;
-    private bool isReceiving = false;
-    private int selectedResolutionWidth = 640;
-    private int selectedResolutionHeight = 480;
-    private long selectedCompressionQuality = 50L;
-    private Aes aes;
-    private WaveInEvent waveIn;
-    private UdpClient audioClient;
-    private UdpClient audioReceiver;
-    private Thread audioStreamingThread;
-    private Thread audioReceivingThread;
-    private bool isAudioStreaming = false;
-    private List<UdpClient> clientList = new List<UdpClient>();
-    private ComboBox comboBoxAudioDevices;
-    private ComboBox comboBoxResolution;
-    private TrackBar trackBarCompression;
-    private ComboBox comboBoxFPS;
-    private TextBox textBoxPort;
-    private Button buttonStart;
-    private PictureBox pictureBoxPreview;
-    private ComboBox comboBoxScreens;
-    private System.Windows.Forms.Timer screenCaptureTimer;
-    private PreviewWindow previewWindow;
-    private bool isServer = true;
-    private RadioButton radioServer;
-    private RadioButton radioClient;
-    private TextBox textBoxIPAddress;
-    private volatile bool clientConnected = false;
+public partial class MainForm : Form
+{
+    private TcpListener listener;
+    private TcpClient client;
+    private NetworkStream stream;
+    private CancellationTokenSource cts;
+    private int selectedDisplayIndex;
+    private ImageFormat compressionFormat;
+    private long compressionQuality;
+    private StreamDisplayForm streamDisplayForm;
+    private int screenWidth;
+    private int screenHeight;
+    private int fps; // Field to store the current FPS value
+    private IWaveIn waveIn;
+    private WaveOutEvent waveOut;
+    private BufferedWaveProvider waveProvider;
+    private CancellationTokenSource callCts;
+
+    public MainForm()
+    {
+        
+        InitializeComponent();
+    }
+
+    private void InitializeComponent()
+    {
+        
+        this.rbServer = new System.Windows.Forms.RadioButton();
+        this.rbClient = new System.Windows.Forms.RadioButton();
+        this.txtIPAddress = new System.Windows.Forms.TextBox();
+        this.txtPort = new System.Windows.Forms.TextBox();
+        this.cmbResolution = new System.Windows.Forms.ComboBox();
+        this.cmbFPS = new System.Windows.Forms.ComboBox();
+        this.cmbCompression = new System.Windows.Forms.ComboBox();
+        this.btnStart = new System.Windows.Forms.Button();
+        this.cmbDisplay = new System.Windows.Forms.ComboBox();
+        this.lblDisplay = new System.Windows.Forms.Label();
+        this.lblCompressionType = new System.Windows.Forms.Label();
+        this.trkCompressionLevel = new System.Windows.Forms.TrackBar();
+        this.lblCompressionLevel = new System.Windows.Forms.Label();
+        this.cmbAudioInput = new System.Windows.Forms.ComboBox();
+        this.cmbAudioOutput = new System.Windows.Forms.ComboBox();
+        this.cmbBitrate = new System.Windows.Forms.ComboBox();
+        this.btnStartCall = new System.Windows.Forms.Button();
+        this.btnStopCall = new System.Windows.Forms.Button();
+        this.trkInputVolume = new System.Windows.Forms.TrackBar();
+        this.trkOutputVolume = new System.Windows.Forms.TrackBar();
+        this.lblInputVolume = new System.Windows.Forms.Label();
+        this.lblOutputVolume = new System.Windows.Forms.Label();
+        ((System.ComponentModel.ISupportInitialize)(this.trkCompressionLevel)).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)(this.trkInputVolume)).BeginInit();
+        ((System.ComponentModel.ISupportInitialize)(this.trkOutputVolume)).BeginInit();
+        this.SuspendLayout();
+
+        // Set the form size to 1024x768
+        this.ClientSize = new System.Drawing.Size(1024, 768);
+
+        // rbServer
+        this.rbServer.AutoSize = true;
+        this.rbServer.Location = new System.Drawing.Point(12, 12);
+        this.rbServer.Name = "rbServer";
+        this.rbServer.Size = new System.Drawing.Size(56, 17);
+        this.rbServer.TabIndex = 0;
+        this.rbServer.TabStop = true;
+        this.rbServer.Text = "Server";
+        this.rbServer.UseVisualStyleBackColor = true;
+
+        // rbClient
+        this.rbClient.AutoSize = true;
+        this.rbClient.Location = new System.Drawing.Point(74, 12);
+        this.rbClient.Name = "rbClient";
+        this.rbClient.Size = new System.Drawing.Size(51, 17);
+        this.rbClient.TabIndex = 1;
+        this.rbClient.TabStop = true;
+        this.rbClient.Text = "Client";
+        this.rbClient.UseVisualStyleBackColor = true;
+
+        // txtIPAddress
+        this.txtIPAddress.Location = new System.Drawing.Point(12, 35);
+        this.txtIPAddress.Name = "txtIPAddress";
+        this.txtIPAddress.Size = new System.Drawing.Size(113, 20);
+        this.txtIPAddress.TabIndex = 2;
+        this.txtIPAddress.Text = "127.0.0.1";
+
+        // txtPort
+        this.txtPort.Location = new System.Drawing.Point(131, 35);
+        this.txtPort.Name = "txtPort";
+        this.txtPort.Size = new System.Drawing.Size(59, 20);
+        this.txtPort.TabIndex = 3;
+        this.txtPort.Text = "5000";
+
+        // cmbResolution
+        this.cmbResolution.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbResolution.FormattingEnabled = true;
+        this.cmbResolution.Items.AddRange(new object[] {
+            "source",   // Add the "source" option
+            "1920x1080",
+            "1280x720",
+            "1024x768",
+            "800x600"});
+        this.cmbResolution.Location = new System.Drawing.Point(12, 61);
+        this.cmbResolution.Name = "cmbResolution";
+        this.cmbResolution.Size = new System.Drawing.Size(100, 21);
+        this.cmbResolution.TabIndex = 4;
+        this.cmbResolution.SelectedIndexChanged += new System.EventHandler(this.cmbResolution_SelectedIndexChanged);
+
+        // cmbFPS
+        this.cmbFPS.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbFPS.FormattingEnabled = true;
+        this.cmbFPS.Items.AddRange(new object[] {
+            "15",
+            "30",
+            "60"});
+        this.cmbFPS.Location = new System.Drawing.Point(118, 61);
+        this.cmbFPS.Name = "cmbFPS";
+        this.cmbFPS.Size = new System.Drawing.Size(72, 21);
+        this.cmbFPS.TabIndex = 5;
+        this.cmbFPS.SelectedIndexChanged += new System.EventHandler(this.cmbFPS_SelectedIndexChanged);
+
+        // cmbCompression
+        this.cmbCompression.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbCompression.FormattingEnabled = true;
+        this.cmbCompression.Items.AddRange(new object[] {
+            "JPEG",
+            "PNG",
+            "GIF"});
+        this.cmbCompression.Location = new System.Drawing.Point(12, 87);
+        this.cmbCompression.Name = "cmbCompression";
+        this.cmbCompression.Size = new System.Drawing.Size(100, 21);
+        this.cmbCompression.TabIndex = 6;
+        this.cmbCompression.SelectedIndexChanged += new System.EventHandler(this.cmbCompression_SelectedIndexChanged);
+
+        // btnStart
+        this.btnStart.Location = new System.Drawing.Point(12, 142);
+        this.btnStart.Name = "btnStart";
+        this.btnStart.Size = new System.Drawing.Size(178, 23);
+        this.btnStart.TabIndex = 7;
+        this.btnStart.Text = "Start";
+        this.btnStart.UseVisualStyleBackColor = true;
+        this.btnStart.Click += new System.EventHandler(this.btnStart_Click);
+
+        // cmbDisplay
+        this.cmbDisplay.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbDisplay.FormattingEnabled = true;
+        this.cmbDisplay.Location = new System.Drawing.Point(68, 114);
+        this.cmbDisplay.Name = "cmbDisplay";
+        this.cmbDisplay.Size = new System.Drawing.Size(121, 21);
+        this.cmbDisplay.TabIndex = 9;
+
+        // lblDisplay
+        this.lblDisplay.AutoSize = true;
+        this.lblDisplay.Location = new System.Drawing.Point(12, 117);
+        this.lblDisplay.Name = "lblDisplay";
+        this.lblDisplay.Size = new System.Drawing.Size(42, 13);
+        this.lblDisplay.TabIndex = 10;
+        this.lblDisplay.Text = "Display:";
+
+        // lblCompressionType
+        this.lblCompressionType.AutoSize = true;
+        this.lblCompressionType.Location = new System.Drawing.Point(118, 90);
+        this.lblCompressionType.Name = "lblCompressionType";
+        this.lblCompressionType.Size = new System.Drawing.Size(97, 13);
+        this.lblCompressionType.TabIndex = 11;
+        this.lblCompressionType.Text = "Compression Type:";
+
+        // trkCompressionLevel
+        this.trkCompressionLevel.Location = new System.Drawing.Point(12, 171);
+        this.trkCompressionLevel.Maximum = 100;
+        this.trkCompressionLevel.Minimum = 1;
+        this.trkCompressionLevel.Name = "trkCompressionLevel";
+        this.trkCompressionLevel.Size = new System.Drawing.Size(178, 45);
+        this.trkCompressionLevel.TabIndex = 12;
+        this.trkCompressionLevel.Value = 50;
+        this.trkCompressionLevel.Scroll += new System.EventHandler(this.trkCompressionLevel_Scroll);
+
+        // lblCompressionLevel
+        this.lblCompressionLevel.AutoSize = true;
+        this.lblCompressionLevel.Location = new System.Drawing.Point(196, 171);
+        this.lblCompressionLevel.Name = "lblCompressionLevel";
+        this.lblCompressionLevel.Size = new System.Drawing.Size(94, 13);
+        this.lblCompressionLevel.TabIndex = 13;
+        this.lblCompressionLevel.Text = "Compression Level:";
+
+        // Additional controls for audio settings
+        this.cmbAudioInput.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbAudioInput.FormattingEnabled = true;
+        this.cmbAudioInput.Location = new System.Drawing.Point(12, 200);
+        this.cmbAudioInput.Name = "cmbAudioInput";
+        this.cmbAudioInput.Size = new System.Drawing.Size(178, 21);
+        this.cmbAudioInput.TabIndex = 14;
+
+        this.cmbAudioOutput.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbAudioOutput.FormattingEnabled = true;
+        this.cmbAudioOutput.Location = new System.Drawing.Point(12, 230);
+        this.cmbAudioOutput.Name = "cmbAudioOutput";
+        this.cmbAudioOutput.Size = new System.Drawing.Size(178, 21);
+        this.cmbAudioOutput.TabIndex = 15;
+
+        this.cmbBitrate.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbBitrate.FormattingEnabled = true;
+        this.cmbBitrate.Items.AddRange(new object[] {
+            "16",
+            "32",
+            "64",
+            "128",
+            "256"});
+        this.cmbBitrate.Location = new System.Drawing.Point(12, 260);
+        this.cmbBitrate.Name = "cmbBitrate";
+        this.cmbBitrate.Size = new System.Drawing.Size(178, 21);
+        this.cmbBitrate.TabIndex = 16;
+
+        this.btnStartCall.Location = new System.Drawing.Point(12, 290);
+        this.btnStartCall.Name = "btnStartCall";
+        this.btnStartCall.Size = new System.Drawing.Size(75, 23);
+        this.btnStartCall.TabIndex = 17;
+        this.btnStartCall.Text = "Start Call";
+        this.btnStartCall.UseVisualStyleBackColor = true;
+        this.btnStartCall.Click += new System.EventHandler(this.btnStartCall_Click);
+
+        this.btnStopCall.Location = new System.Drawing.Point(115, 290);
+        this.btnStopCall.Name = "btnStopCall";
+        this.btnStopCall.Size = new System.Drawing.Size(75, 23);
+        this.btnStopCall.TabIndex = 18;
+        this.btnStopCall.Text = "Stop Call";
+        this.btnStopCall.UseVisualStyleBackColor = true;
+        this.btnStopCall.Click += new System.EventHandler(this.btnStopCall_Click);
+
+        // TrackBar for Input Volume
+        this.trkInputVolume.Location = new System.Drawing.Point(12, 320);
+        this.trkInputVolume.Maximum = 100;
+        this.trkInputVolume.Name = "trkInputVolume";
+        this.trkInputVolume.Size = new System.Drawing.Size(178, 45);
+        this.trkInputVolume.TabIndex = 19;
+        this.trkInputVolume.Value = 50; // Default volume 50%
+        this.trkInputVolume.Scroll += new System.EventHandler(this.trkInputVolume_Scroll);
+
+        // TrackBar for Output Volume
+        this.trkOutputVolume.Location = new System.Drawing.Point(12, 370);
+        this.trkOutputVolume.Maximum = 100;
+        this.trkOutputVolume.Name = "trkOutputVolume";
+        this.trkOutputVolume.Size = new System.Drawing.Size(178, 45);
+        this.trkOutputVolume.TabIndex = 20;
+        this.trkOutputVolume.Value = 50; // Default volume 50%
+        this.trkOutputVolume.Scroll += new System.EventHandler(this.trkOutputVolume_Scroll);
+
+        // Label for Input Volume
+        this.lblInputVolume.AutoSize = true;
+        this.lblInputVolume.Location = new System.Drawing.Point(196, 320);
+        this.lblInputVolume.Name = "lblInputVolume";
+        this.lblInputVolume.Size = new System.Drawing.Size(70, 13);
+        this.lblInputVolume.TabIndex = 21;
+        this.lblInputVolume.Text = "Input Volume:";
+
+        // Label for Output Volume
+        this.lblOutputVolume.AutoSize = true;
+        this.lblOutputVolume.Location = new System.Drawing.Point(196, 370);
+        this.lblOutputVolume.Name = "lblOutputVolume";
+        this.lblOutputVolume.Size = new System.Drawing.Size(78, 13);
+        this.lblOutputVolume.TabIndex = 22;
+        this.lblOutputVolume.Text = "Output Volume:";
+
+        this.Controls.Add(this.cmbAudioInput);
+        this.Controls.Add(this.cmbAudioOutput);
+        this.Controls.Add(this.cmbBitrate);
+        this.Controls.Add(this.btnStartCall);
+        this.Controls.Add(this.btnStopCall);
+        this.Controls.Add(this.trkInputVolume);
+        this.Controls.Add(this.trkOutputVolume);
+        this.Controls.Add(this.lblInputVolume);
+        this.Controls.Add(this.lblOutputVolume);
+
+        // Existing controls...
+        this.Controls.Add(this.lblCompressionLevel);
+        this.Controls.Add(this.trkCompressionLevel);
+        this.Controls.Add(this.lblCompressionType);
+        this.Controls.Add(this.lblDisplay);
+        this.Controls.Add(this.cmbDisplay);
+        this.Controls.Add(this.btnStart);
+        this.Controls.Add(this.cmbCompression);
+        this.Controls.Add(this.cmbFPS);
+        this.Controls.Add(this.cmbResolution);
+        this.Controls.Add(this.txtPort);
+        this.Controls.Add(this.txtIPAddress);
+        this.Controls.Add(this.rbClient);
+        this.Controls.Add(this.rbServer);
+        this.Name = "MainForm";
+        this.Text = "Screen Share App";
+        this.Load += new System.EventHandler(this.MainForm_Load);
+        ((System.ComponentModel.ISupportInitialize)(this.trkCompressionLevel)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.trkInputVolume)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.trkOutputVolume)).EndInit();
+        this.ResumeLayout(false);
+        this.PerformLayout();
+    }
+
+    private void MainForm_Load(object sender, EventArgs e)
+    {
+        // Load available displays into the ComboBox
+        for (int i = 0; i < Screen.AllScreens.Length; i++)
+        {
+            cmbDisplay.Items.Add($"Display {i + 1}");
+        }
+        cmbDisplay.SelectedIndex = 0;
+
+        // Set default compression format
+        cmbCompression.SelectedIndex = 0;
+        cmbResolution.SelectedIndex = 0;
+        cmbFPS.SelectedIndex = 1; // Default to 30 FPS
+
+        // Set the compression quality based on the trackbar value
+        compressionQuality = trkCompressionLevel.Value;
+
+        // Set initial FPS value
+        fps = int.Parse(cmbFPS.SelectedItem.ToString());
+
+        // Load available audio input and output devices
+        for (int i = 0; i < WaveIn.DeviceCount; i++)
+        {
+            var deviceInfo = WaveIn.GetCapabilities(i);
+            cmbAudioInput.Items.Add(deviceInfo.ProductName);
+        }
+
+        for (int i = 0; i < WaveOut.DeviceCount; i++)
+        {
+            var deviceInfo = WaveOut.GetCapabilities(i);
+            cmbAudioOutput.Items.Add(deviceInfo.ProductName);
+        }
+
+        cmbAudioInput.SelectedIndex = 0;
+        cmbAudioOutput.SelectedIndex = 0;
+        cmbBitrate.SelectedIndex = 2; // Default to 64 Kbps
+    }
+
+    private void trkCompressionLevel_Scroll(object sender, EventArgs e)
+    {
+        compressionQuality = trkCompressionLevel.Value;
+        lblCompressionLevel.Text = $"Compression Level: {compressionQuality}";
+        Console.WriteLine($"Compression Quality Changed: {compressionQuality}");
+    }
+
+    private void cmbCompression_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        UpdateCompressionFormat();
+        Console.WriteLine($"Compression Format Changed: {cmbCompression.SelectedItem}");
+    }
+
+    private void UpdateCompressionFormat()
+    {
+        string selectedFormat = cmbCompression.SelectedItem.ToString();
+        switch (selectedFormat)
+        {
+            case "JPEG":
+                compressionFormat = ImageFormat.Jpeg;
+                break;
+            case "PNG":
+                compressionFormat = ImageFormat.Png;
+                break;
+            case "GIF":
+                compressionFormat = ImageFormat.Gif;
+                break;
+            default:
+                compressionFormat = ImageFormat.Jpeg;
+                break;
+        }
+    }
+
+    private void cmbResolution_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        UpdateResolution();
+    }
+
+    private void UpdateResolution()
+    {
+        if (cmbResolution.SelectedItem != null)
+        {
+            string selectedResolution = cmbResolution.SelectedItem.ToString();
+            if (selectedResolution == "source")
+            {
+                // Use the native resolution of the selected display
+                Rectangle bounds = Screen.AllScreens[selectedDisplayIndex].Bounds;
+                screenWidth = bounds.Width;
+                screenHeight = bounds.Height;
+                Console.WriteLine($"Resolution changed to source: {screenWidth}x{screenHeight}");
+            }
+            else
+            {
+                // Parse the selected resolution
+                string[] dimensions = selectedResolution.Split('x');
+                if (dimensions.Length == 2 &&
+                    int.TryParse(dimensions[0], out screenWidth) &&
+                    int.TryParse(dimensions[1], out screenHeight))
+                {
+                    Console.WriteLine($"Resolution changed to: {screenWidth}x{screenHeight}");
+                }
+                else
+                {
+                    Console.WriteLine("Invalid resolution format.");
+                }
+            }
+
+            // Notify the stream display form of the resolution change
+            if (streamDisplayForm != null)
+            {
+                streamDisplayForm.UpdateStreamResolution(screenWidth, screenHeight);
+            }
+        }
+        else
+        {
+            Console.WriteLine("No resolution selected.");
+        }
+    }
+
+    private void cmbFPS_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (cmbFPS.SelectedItem != null)
+        {
+            fps = int.Parse(cmbFPS.SelectedItem.ToString());
+            Console.WriteLine($"FPS changed to: {fps}");
+        }
+    }
+
+    private async void btnStart_Click(object sender, EventArgs e)
+    {
+        selectedDisplayIndex = cmbDisplay.SelectedIndex;
+
+        UpdateCompressionFormat();
+
+        cts = new CancellationTokenSource();
+
+        if (rbServer.Checked)
+        {
+            await StartServerAsync(cts.Token);
+        }
+        else
+        {
+            await StartClientAsync(cts.Token);
+        }
+    }
+
+     private async Task StartServerAsync(CancellationToken cancellationToken)
+    {
+        listener = new TcpListener(IPAddress.Parse(txtIPAddress.Text), int.Parse(txtPort.Text));
+        listener.Start();
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                client = await listener.AcceptTcpClientAsync();
+                _ = Task.Run(() => ServerLoopAsync(client, cancellationToken), cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Server error: {ex.Message}");
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+     private async Task ServerLoopAsync(TcpClient client, CancellationToken cancellationToken)
+    {
+        using (client)
+        {
+            stream = client.GetStream();
+            while (!cancellationToken.IsCancellationRequested && client.Connected)
+            {
+                Bitmap screenshot = CaptureScreen(selectedDisplayIndex);
+                byte[] imageBytes = ImageToByte(screenshot, compressionFormat, compressionQuality);
+                try
+                {
+                    await stream.WriteAsync(imageBytes, 0, imageBytes.Length, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Server stream error: {ex.Message}");
+                    break;
+                }
+                await Task.Delay(1000 / fps, cancellationToken);
+            }
+        }
+    }
+
+    private Bitmap CaptureScreen(int displayIndex)
+    {
+        Rectangle bounds = Screen.AllScreens[displayIndex].Bounds;
+        Bitmap screenshot = new Bitmap(bounds.Width, bounds.Height);
+        using (Graphics g = Graphics.FromImage(screenshot))
+        {
+            g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+        }
+
+        // Resize the screenshot to the desired resolution if it's not the source resolution
+        if (screenWidth != bounds.Width || screenHeight != bounds.Height)
+        {
+            Bitmap resizedScreenshot = new Bitmap(screenshot, new Size(screenWidth, screenHeight));
+            screenshot.Dispose(); // Dispose of the original screenshot to free up memory
+            return resizedScreenshot;
+        }
+
+        return screenshot;
+    }
+
+    private byte[] ImageToByte(Image img, ImageFormat format, long quality)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        {
+            if (format == ImageFormat.Jpeg)
+            {
+                var encoderParameters = new EncoderParameters(1);
+                encoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
+                img.Save(ms, GetEncoder(format), encoderParameters);
+            }
+            else
+            {
+                img.Save(ms, format);
+            }
+            return ms.ToArray();
+        }
+    }
+
+    private ImageCodecInfo GetEncoder(ImageFormat format)
+    {
+        ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
+        foreach (ImageCodecInfo codec in codecs)
+        {
+            if (codec.FormatID == format.Guid)
+            {
+                return codec;
+            }
+        }
+        return null;
+    }
+
+    private async Task StartClientAsync(CancellationToken cancellationToken)
+    {
+        client = new TcpClient();
+        try
+        {
+            await client.ConnectAsync(txtIPAddress.Text, int.Parse(txtPort.Text));
+            stream = client.GetStream();
+            streamDisplayForm = new StreamDisplayForm();
+            streamDisplayForm.Show();
+
+            await ClientLoopAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Client error: {ex.Message}");
+        }
+    }
+
+    private async Task ClientLoopAsync(CancellationToken cancellationToken)
+    {
+        byte[] buffer = new byte[1024 * 1024];
+        while (!cancellationToken.IsCancellationRequested && client.Connected)
+        {
+            try
+            {
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (bytesRead > 0)
+                {
+                    using (MemoryStream ms = new MemoryStream(buffer, 0, bytesRead))
+                    {
+                        Image img = Image.FromStream(ms);
+                        streamDisplayForm.pbStream.Image = img;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Client stream error: {ex.Message}");
+                break;
+            }
+        }
+    }
+
+    private void trkInputVolume_Scroll(object sender, EventArgs e)
+    {
+        // Adjust input volume dynamically if needed
+    }
+
+    private void trkOutputVolume_Scroll(object sender, EventArgs e)
+    {
+        if (waveOut != null)
+        {
+            waveOut.Volume = trkOutputVolume.Value / 100f;
+        }
+    }
+    private async void btnStartCall_Click(object sender, EventArgs e)
+    {
+        callCts = new CancellationTokenSource();
+        if (rbServer.Checked)
+        {
+            StartVoiceCallServer(callCts.Token);
+        }
+        else
+        {
+            StartVoiceCallClient(callCts.Token);
+        }
+    }
+
+    private void btnStopCall_Click(object sender, EventArgs e)
+    {
+        callCts?.Cancel();
+    }
+
+    private void StartVoiceCallServer(CancellationToken cancellationToken)
+    {
+        int inputDeviceNumber = cmbAudioInput.SelectedIndex;
+        waveIn = new WaveInEvent
+        {
+            DeviceNumber = inputDeviceNumber,
+            WaveFormat = new WaveFormat(8000, 16, 1) // 8 KHz, 16-bit, Mono
+        };
+
+        waveIn.DataAvailable += (s, a) =>
+        {
+            // Send audio data to clients
+            if (client != null && client.Connected)
+            {
+                byte[] buffer = AdjustVolume(a.Buffer, a.BytesRecorded, trkInputVolume.Value);
+                stream.Write(buffer, 0, buffer.Length);
+            }
+        };
+
+        waveIn.StartRecording();
+
+        // Listen for incoming connections
+        Task.Run(async () =>
+        {
+            listener = new TcpListener(IPAddress.Parse(txtIPAddress.Text), int.Parse(txtPort.Text));
+            listener.Start();
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                client = await listener.AcceptTcpClientAsync();
+                stream = client.GetStream();
+            }
+        }, cancellationToken);
+    }
+
+   private void StartVoiceCallClient(CancellationToken cancellationToken)
+    {
+        int outputDeviceNumber = cmbAudioOutput.SelectedIndex;
+        waveOut = new WaveOutEvent
+        {
+            DeviceNumber = outputDeviceNumber,
+            Volume = trkOutputVolume.Value / 100f // Set initial volume
+        };
+
+        waveProvider = new BufferedWaveProvider(new WaveFormat(8000, 16, 1));
+        waveOut.Init(waveProvider);
+        waveOut.Play();
+
+        // Connect to the server
+        Task.Run(async () =>
+        {
+            client = new TcpClient();
+            await client.ConnectAsync(txtIPAddress.Text, int.Parse(txtPort.Text));
+            stream = client.GetStream();
+
+            byte[] buffer = new byte[1024];
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                waveProvider.AddSamples(buffer, 0, bytesRead);
+            }
+        }, cancellationToken);
+    }
+    // Function to adjust volume of audio buffer
+    private byte[] AdjustVolume(byte[] buffer, int bytesRecorded, int volumePercent)
+    {
+        float volume = volumePercent / 100f;
+        for (int i = 0; i < bytesRecorded; i += 2)
+        {
+            short sample = BitConverter.ToInt16(buffer, i);
+            sample = (short)(sample * volume);
+            byte[] bytes = BitConverter.GetBytes(sample);
+            buffer[i] = bytes[0];
+            buffer[i + 1] = bytes[1];
+        }
+        return buffer;
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        cts?.Cancel();
+
+        base.OnFormClosing(e);
+    }
+
+    private System.Windows.Forms.RadioButton rbServer;
+    private System.Windows.Forms.RadioButton rbClient;
+    private System.Windows.Forms.TextBox txtIPAddress;
+    private System.Windows.Forms.TextBox txtPort;
+    private System.Windows.Forms.ComboBox cmbResolution;
+    private System.Windows.Forms.ComboBox cmbFPS;
+    private System.Windows.Forms.ComboBox cmbCompression;
+    private System.Windows.Forms.Button btnStart;
+    private System.Windows.Forms.ComboBox cmbDisplay;
+    private System.Windows.Forms.Label lblDisplay;
+    private System.Windows.Forms.Label lblCompressionType;
+    private System.Windows.Forms.TrackBar trkCompressionLevel;
+    private System.Windows.Forms.Label lblCompressionLevel;
+    private System.Windows.Forms.ComboBox cmbAudioInput;
+    private System.Windows.Forms.ComboBox cmbAudioOutput;
+    private System.Windows.Forms.ComboBox cmbBitrate;
+    private System.Windows.Forms.Button btnStartCall;
+    private System.Windows.Forms.Button btnStopCall;
+    private System.Windows.Forms.TrackBar trkInputVolume;
+    private System.Windows.Forms.TrackBar trkOutputVolume;
+    private System.Windows.Forms.Label lblInputVolume;
+    private System.Windows.Forms.Label lblOutputVolume;
 
     /// <summary>
     /// The main entry point for the application.
     /// </summary>
     [STAThread]
-    static void Main() {
-      Application.EnableVisualStyles();
-      Application.SetCompatibleTextRenderingDefault(false);
-      try {
+    static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new MainForm());
-      } catch (Exception ex) {
-        MessageBox.Show($"Application Error: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-      }
     }
+}
 
-    private void InitializeComponent() {
-      this.Text = "Screen and Audio Streaming App";
-      this.Size = new System.Drawing.Size(
-          350, 400);  // Reduced size since preview is in separate window
-
-      // Client/Server Selection
-      GroupBox groupBoxMode = new GroupBox { Text = "Mode", Left = 10, Top = 10,
-                                             Width = 310, Height = 50 };
-      radioServer = new RadioButton { Text = "Server", Left = 10, Top = 20,
-                                      Width = 100, Checked = true };
-      radioClient = new RadioButton { Text = "Client", Left = 120, Top = 20,
-                                      Width = 100 };
-      groupBoxMode.Controls.AddRange(
-          new Control[] { radioServer, radioClient });
-
-      // IP Address input (for client mode)
-      Label labelIP =
-          new Label { Text = "Server IP:", Left = 10, Top = 70, Width = 100 };
-      textBoxIPAddress = new TextBox { Left = 120, Top = 70, Width = 200,
-                                       Text = "127.0.0.1", Enabled = false };
-
-      // Existing controls (adjusted positions)
-      Label labelScreens = new Label { Text = "Select Screen:", Left = 10,
-                                       Top = 110, Width = 100 };
-      comboBoxScreens = new ComboBox { Left = 120, Top = 110, Width = 200 };
-
-      Label labelAudioDevices = new Label { Text = "Select Audio:", Left = 10,
-                                            Top = 150, Width = 100 };
-      comboBoxAudioDevices =
-          new ComboBox { Left = 120, Top = 150, Width = 200 };
-
-      Label labelResolution =
-          new Label { Text = "Resolution:", Left = 10, Top = 190, Width = 100 };
-      comboBoxResolution = new ComboBox { Left = 120, Top = 190, Width = 200 };
-      comboBoxResolution.Items.AddRange(
-          new string[] { "640x480", "1280x720", "1920x1080" });
-      comboBoxResolution.SelectedIndex = 0;
-
-      Label labelCompression = new Label { Text = "Compression:", Left = 10,
-                                           Top = 230, Width = 100 };
-      trackBarCompression =
-          new TrackBar { Left = 120,   Top = 225,     Width = 200,
-                         Minimum = 10, Maximum = 100, Value = 50 };
-
-      Label labelFPS =
-          new Label { Text = "FPS:", Left = 10, Top = 270, Width = 100 };
-      comboBoxFPS = new ComboBox { Left = 120, Top = 270, Width = 200 };
-      comboBoxFPS.Items.AddRange(new string[] { "15", "30", "60" });
-      comboBoxFPS.SelectedIndex = 1;
-
-      Label labelPort =
-          new Label { Text = "Port:", Left = 10, Top = 310, Width = 100 };
-      textBoxPort =
-          new TextBox { Left = 120, Top = 310, Width = 200, Text = "5000" };
-
-      buttonStart = new Button { Text = "Start Streaming", Left = 10, Top = 350,
-                                 Width = 310 };
-      buttonStart.Click += ButtonStart_Click;
-
-      this.Controls.AddRange(new Control[] {
-        groupBoxMode, labelIP, textBoxIPAddress, labelScreens, comboBoxScreens,
-        labelAudioDevices, comboBoxAudioDevices, labelResolution,
-        comboBoxResolution, labelCompression, trackBarCompression, labelFPS,
-        comboBoxFPS, labelPort, textBoxPort, buttonStart
-      });
-
-      // Event handlers for radio buttons
-      radioServer.CheckedChanged += (s, e) => {
-        textBoxIPAddress.Enabled = !radioServer.Checked;
-        isServer = radioServer.Checked;
-        UpdateControlsState();
-      };
-
-      radioClient.CheckedChanged += (s, e) => {
-        textBoxIPAddress.Enabled = radioClient.Checked;
-        isServer = !radioClient.Checked;
-        UpdateControlsState();
-      };
-
-      // Create preview window
-      previewWindow = new PreviewWindow();
-      previewWindow.Show();
-    }
-
-    private void UpdateControlsState() {
-      comboBoxScreens.Enabled = isServer;
-      comboBoxAudioDevices.Enabled = isServer;
-      comboBoxResolution.Enabled = isServer;
-      trackBarCompression.Enabled = isServer;
-      comboBoxFPS.Enabled = isServer;
-    }
-    private void ButtonStart_Click(object sender, EventArgs e) {
-      if (!isStreaming) {
-        try {
-          StartStreaming();
-          buttonStart.Text = "Stop Streaming";
-        } catch (Exception ex) {
-          MessageBox.Show($"Error starting stream: {ex.Message}", "Error",
-                          MessageBoxButtons.OK, MessageBoxIcon.Error);
-          StopStreaming();
-        }
-      } else {
-        try {
-          StopStreaming();
-          buttonStart.Text = "Start Streaming";
-        } catch (Exception ex) {
-          MessageBox.Show($"Error stopping stream: {ex.Message}", "Error",
-                          MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-      }
-    }
-
-    public MainForm() {
-      screenCaptureTimer = new System.Windows.Forms.Timer();
-      screenCaptureTimer.Tick += ScreenCaptureTimer_Tick;
-      MessageBox.Show("Timer initialized");
-      try {
-        MessageBox.Show("Starting initialization");
+public partial class StreamDisplayForm : Form
+{
+    public StreamDisplayForm()
+    {
         InitializeComponent();
-        MessageBox.Show("Component initialization complete");
-
-        try {
-          InitializeScreens();
-          MessageBox.Show("Screens initialized");
-        } catch (Exception ex) {
-          MessageBox.Show($"Screen initialization failed: {ex.Message}");
-        }
-
-        try {
-          InitializeAudioDevices();
-          MessageBox.Show("Audio devices initialized");
-        } catch (Exception ex) {
-          MessageBox.Show($"Audio initialization failed: {ex.Message}");
-        }
-
-        try {
-          InitializeSettings();
-          MessageBox.Show("Settings initialized");
-        } catch (Exception ex) {
-          MessageBox.Show($"Settings initialization failed: {ex.Message}");
-        }
-
-        try {
-          InitializeEncryption();
-          MessageBox.Show("Encryption initialized");
-        } catch (Exception ex) {
-          MessageBox.Show($"Encryption initialization failed: {ex.Message}");
-        }
-      } catch (Exception ex) {
-        MessageBox.Show(
-            $"Main initialization failed: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
-      }
     }
 
-    private void InitializeScreens() {
-      foreach (Screen screen in Screen.AllScreens) {
-        comboBoxScreens.Items.Add(
-            $"Screen {Screen.AllScreens.ToList().IndexOf(screen) + 1} ({screen.Bounds.Width}x{screen.Bounds.Height})");
-      }
-      if (comboBoxScreens.Items.Count > 0) {
-        comboBoxScreens.SelectedIndex = 0;
-      }
-    }
-
-    private void InitializeAudioDevices() {
-      for (int i = 0; i < WaveIn.DeviceCount; i++) {
-        var capabilities = WaveIn.GetCapabilities(i);
-        comboBoxAudioDevices.Items.Add(capabilities.ProductName);
-      }
-      if (comboBoxAudioDevices.Items.Count > 0) {
-        comboBoxAudioDevices.SelectedIndex = 0;
-      }
-    }
-
-    private void StartStreaming() {
-      try {
-        if (isServer) {
-          StartServerMode();
-        } else {
-          StartClientMode();
-        }
-        buttonStart.Text = "Stop Streaming";
-      } catch (Exception ex) {
-        MessageBox.Show($"Error starting stream: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-        StopStreaming();
-      }
-    }
-  private void ListenForClientConnection()
-{
-    IPEndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, int.Parse(textBoxPort.Text));
-    while (isStreaming)
+    private void InitializeComponent()
     {
-        try
-        {
-            byte[] data = udpClient.Receive(ref remoteEndPoint); // This will block until data is received
-            clientConnected = true;
-            screenCaptureTimer.Start(); // Start the preview only after a client connects
-            SendVideoStream(remoteEndPoint);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error listening for client connection: {ex.Message}");
-        }
+        this.pbStream = new System.Windows.Forms.PictureBox();
+        ((System.ComponentModel.ISupportInitialize)(this.pbStream)).BeginInit();
+        this.SuspendLayout();
+
+        // pbStream
+        this.pbStream.Dock = System.Windows.Forms.DockStyle.Fill;
+        this.pbStream.Location = new System.Drawing.Point(0, 0);
+        this.pbStream.Name = "pbStream";
+        this.pbStream.Size = new System.Drawing.Size(800, 450); // initial size
+        this.pbStream.SizeMode = PictureBoxSizeMode.StretchImage; // Ensure the image is stretched to fit the PictureBox
+        this.pbStream.TabIndex = 0;
+        this.pbStream.TabStop = false;
+
+        // StreamDisplayForm
+        this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+        this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+        this.ClientSize = new System.Drawing.Size(800, 450); // initial size
+        this.Controls.Add(this.pbStream);
+        this.Name = "StreamDisplayForm";
+        this.Text = "Stream Display";
+        ((System.ComponentModel.ISupportInitialize)(this.pbStream)).EndInit();
+        this.ResumeLayout(false);
     }
-}
-   private void SendVideoStream(IPEndPoint remoteEndPoint)
-{
-    while (isStreaming && clientConnected)
+
+    public PictureBox pbStream;
+
+    // Method to update the stream resolution
+    public void UpdateStreamResolution(int width, int height)
     {
-        if (pictureBoxPreview.Image != null)
-        {
-            using (var ms = new MemoryStream())
-            {
-                EncoderParameters encoderParams = new EncoderParameters(1);
-                encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, selectedCompressionQuality);
-                ImageCodecInfo jpegCodec = ImageCodecInfo.GetImageEncoders()[1];
-
-                lock (pictureBoxPreview.Image)
-                {
-                    pictureBoxPreview.Image.Save(ms, jpegCodec, encoderParams);
-                }
-
-                byte[] buffer = EncryptData(ms.ToArray());
-                udpClient.Send(buffer, buffer.Length, remoteEndPoint);
-            }
-        }
-        Thread.Sleep(1);
+        this.pbStream.Size = new Size(width, height);
+        this.ClientSize = new Size(width, height);
     }
-}
-        private void StartServerMode()
-    {
-        if (comboBoxFPS.SelectedItem == null)
-        {
-            MessageBox.Show("Please select a FPS value.");
-            return;
-        }
-
-        isStreaming = true;
-        udpClient = new UdpClient();
-        screenCaptureTimer.Interval = 1000 / int.Parse(comboBoxFPS.SelectedItem.ToString());
-
-        streamingThread = new Thread(ListenForClientConnection);
-        streamingThread.Start();
-        StartAudioStreaming();
-    }
-    private void StartClientMode() {
-      isReceiving = true;
-      int port = int.Parse(textBoxPort.Text);
-      IPAddress serverIP = IPAddress.Parse(textBoxIPAddress.Text);
-
-      udpReceiver = new UdpClient(port);
-      receivingThread = new Thread(() => ReceiveVideoStream(serverIP));
-      receivingThread.Start();
-
-      audioReceiver = new UdpClient(port + 1);
-      audioReceivingThread = new Thread(() => ReceiveAudioStream(serverIP));
-      audioReceivingThread.Start();
-    }
-
-  private void ReceiveVideoStream(IPAddress serverIP)
-{
-    while (isReceiving)
-    {
-        try
-        {
-            IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-            byte[] data = udpReceiver.Receive(ref remoteEP);
-            Console.WriteLine("Data received from client");
-
-            byte[] decryptedData = DecryptData(data);
-
-            using (MemoryStream ms = new MemoryStream(decryptedData))
-            {
-                Image receivedImage = Image.FromStream(ms);
-                previewWindow.UpdatePreview(receivedImage);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error receiving video: {ex.Message}");
-        }
-        Thread.Sleep(1);
-    }
-}
-
-    private void ReceiveAudioStream(IPAddress serverIP) {
-      // Implement audio receiving logic here
-    }
-
-    // Modified screen capture to use preview window
-    private void ScreenCaptureTimer_Tick(object sender, EventArgs e) {
-      if (isStreaming && comboBoxScreens.SelectedIndex >= 0) {
-        Screen selectedScreen =
-            Screen.AllScreens[comboBoxScreens.SelectedIndex];
-        using (Bitmap screenshot = new Bitmap(selectedScreen.Bounds.Width,
-                                              selectedScreen.Bounds.Height)) {
-          using (Graphics g = Graphics.FromImage(screenshot)) {
-            g.CopyFromScreen(selectedScreen.Bounds.X, selectedScreen.Bounds.Y,
-                             0, 0, selectedScreen.Bounds.Size);
-          }
-
-          var resizedScreenshot = new Bitmap(
-              screenshot,
-              new Size(selectedResolutionWidth, selectedResolutionHeight));
-          previewWindow.UpdatePreview(resizedScreenshot);
-        }
-      }
-    }
-
-    protected override void OnFormClosing(FormClosingEventArgs e) {
-      if (isStreaming) {
-        StopStreaming();
-      }
-      previewWindow?.Close();
-      aes?.Dispose();
-      base.OnFormClosing(e);
-    }
-
-    private void StopStreaming() {
-      isStreaming = false;
-      screenCaptureTimer?.Stop();  // Use null-conditional operator
-      streamingThread?.Abort();
-      udpClient?.Close();
-      StopAudioStreaming();
-      buttonStart.Text = "Start Streaming";
-    }
-    private void SendVideoStream() {
-      IPEndPoint remoteEndPoint =
-          new IPEndPoint(IPAddress.Broadcast, int.Parse(textBoxPort.Text));
-      while (isStreaming) {
-        if (pictureBoxPreview.Image != null) {
-          using (var ms = new MemoryStream()) {
-            EncoderParameters encoderParams = new EncoderParameters(1);
-            encoderParams.Param[0] =
-                new EncoderParameter(System.Drawing.Imaging.Encoder.Quality,
-                                     selectedCompressionQuality);
-            ImageCodecInfo jpegCodec = ImageCodecInfo.GetImageEncoders()[1];
-
-            lock (pictureBoxPreview.Image) {
-              pictureBoxPreview.Image.Save(ms, jpegCodec, encoderParams);
-            }
-
-            byte[] buffer = EncryptData(ms.ToArray());
-            udpClient.Send(buffer, buffer.Length, remoteEndPoint);
-          }
-        }
-        Thread.Sleep(1);
-      }
-    }
-
-    private void StartAudioStreaming() {
-      if (comboBoxAudioDevices.SelectedIndex >= 0) {
-        isAudioStreaming = true;
-        waveIn = new WaveInEvent();
-        waveIn.DeviceNumber = comboBoxAudioDevices.SelectedIndex;
-        waveIn.WaveFormat = new WaveFormat(44100, 16, 2);
-        waveIn.DataAvailable += AudioDataAvailable;
-        waveIn.StartRecording();
-        audioClient = new UdpClient();
-        audioStreamingThread = new Thread(SendAudioStream);
-        audioStreamingThread.Start();
-      }
-    }
-
-    private void StopAudioStreaming() {
-      isAudioStreaming = false;
-      waveIn?.StopRecording();
-      waveIn?.Dispose();
-      audioStreamingThread?.Abort();
-      audioClient?.Close();
-    }
-
-    private void AudioDataAvailable(object sender, WaveInEventArgs e) {
-      if (isAudioStreaming) {
-        byte[] encryptedAudio = EncryptData(e.Buffer);
-        audioClient.Send(encryptedAudio, encryptedAudio.Length,
-                         new IPEndPoint(IPAddress.Broadcast,
-                                        int.Parse(textBoxPort.Text) + 1));
-      }
-    }
-
-    private void InitializeSettings() {
-      comboBoxResolution.SelectedIndexChanged += (s, e) => {
-        string[] dimensions =
-            comboBoxResolution.SelectedItem.ToString().Split('x');
-        selectedResolutionWidth = int.Parse(dimensions[0]);
-        selectedResolutionHeight = int.Parse(dimensions[1]);
-      };
-
-      trackBarCompression.ValueChanged +=
-          (s, e) => { selectedCompressionQuality = trackBarCompression.Value; };
-
-      comboBoxFPS.SelectedIndexChanged += (s, e) => {
-        if (screenCaptureTimer != null && comboBoxFPS.SelectedItem != null) {
-          screenCaptureTimer.Interval =
-              1000 / int.Parse(comboBoxFPS.SelectedItem.ToString());
-        }
-      };
-    }
-
-    private void InitializeEncryption() {
-      aes = Aes.Create();
-      aes.Key =
-          Encoding.UTF8.GetBytes("1234567890123456");  // 16-byte key (example)
-      aes.IV = Encoding.UTF8.GetBytes("1234567890123456");
-    }
-
-    private byte[] EncryptData(byte[] data) {
-      using (var encryptor = aes.CreateEncryptor()) {
-        return encryptor.TransformFinalBlock(data, 0, data.Length);
-      }
-    }
-
-    private byte[] DecryptData(byte[] data) {
-      using (var decryptor = aes.CreateDecryptor()) {
-        return decryptor.TransformFinalBlock(data, 0, data.Length);
-      }
-    }
-
-    private void SendAudioStream() {
-      while (isAudioStreaming) {
-        Thread.Sleep(1);
-      }
-    }
-  }
-
-  public class PreviewWindow : Form
-{
-    private PictureBox pictureBox;
-
-    public PreviewWindow()
-    {
-        this.Text = "Preview";
-        this.Size = new Size(800, 600);
-        this.FormBorderStyle = FormBorderStyle.Sizable;
-
-        pictureBox = new PictureBox
-        {
-            Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.Zoom
-        };
-
-        this.Controls.Add(pictureBox);
-    }
-
-    public void UpdatePreview(Image image)
-    {
-        if (pictureBox.InvokeRequired)
-        {
-            pictureBox.Invoke(new Action(() => UpdatePreview(image)));
-            return;
-        }
-
-        pictureBox.Image?.Dispose();
-        pictureBox.Image = image;
-    }
-
-    protected override void OnFormClosing(FormClosingEventArgs e)
-    {
-        pictureBox.Image?.Dispose();
-        base.OnFormClosing(e);
-    }
-}
 }
