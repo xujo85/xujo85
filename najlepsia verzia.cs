@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -8,19 +7,22 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using OpenTK.Graphics.OpenGL;
 
 public partial class MainForm : Form
 {
-
- private TcpListener listener;
+    private TcpListener listener;
     private TcpClient client;
     private NetworkStream stream;
     private CancellationTokenSource cts;
     private int selectedDisplayIndex;
     private ImageFormat compressionFormat;
     private long compressionQuality;
-    private StreamDisplayForm streamDisplayForm;    public MainForm()
+    private StreamDisplayForm streamDisplayForm;
+    private int screenWidth;
+    private int screenHeight;
+    private int fps; // Field to store the current FPS value
+
+    public MainForm()
     {
         InitializeComponent();
     }
@@ -32,7 +34,7 @@ public partial class MainForm : Form
         this.txtIPAddress = new System.Windows.Forms.TextBox();
         this.txtPort = new System.Windows.Forms.TextBox();
         this.cmbResolution = new System.Windows.Forms.ComboBox();
-        this.txtFPS = new System.Windows.Forms.TextBox();
+        this.cmbFPS = new System.Windows.Forms.ComboBox();
         this.cmbCompression = new System.Windows.Forms.ComboBox();
         this.btnStart = new System.Windows.Forms.Button();
         this.cmbDisplay = new System.Windows.Forms.ComboBox();
@@ -42,7 +44,7 @@ public partial class MainForm : Form
         this.lblCompressionLevel = new System.Windows.Forms.Label();
         ((System.ComponentModel.ISupportInitialize)(this.trkCompressionLevel)).BeginInit();
         this.SuspendLayout();
-        
+
         // rbServer
         this.rbServer.AutoSize = true;
         this.rbServer.Location = new System.Drawing.Point(12, 12);
@@ -52,7 +54,7 @@ public partial class MainForm : Form
         this.rbServer.TabStop = true;
         this.rbServer.Text = "Server";
         this.rbServer.UseVisualStyleBackColor = true;
-        
+
         // rbClient
         this.rbClient.AutoSize = true;
         this.rbClient.Location = new System.Drawing.Point(74, 12);
@@ -62,21 +64,21 @@ public partial class MainForm : Form
         this.rbClient.TabStop = true;
         this.rbClient.Text = "Client";
         this.rbClient.UseVisualStyleBackColor = true;
-        
+
         // txtIPAddress
         this.txtIPAddress.Location = new System.Drawing.Point(12, 35);
         this.txtIPAddress.Name = "txtIPAddress";
         this.txtIPAddress.Size = new System.Drawing.Size(113, 20);
         this.txtIPAddress.TabIndex = 2;
         this.txtIPAddress.Text = "127.0.0.1";
-        
+
         // txtPort
         this.txtPort.Location = new System.Drawing.Point(131, 35);
         this.txtPort.Name = "txtPort";
         this.txtPort.Size = new System.Drawing.Size(59, 20);
         this.txtPort.TabIndex = 3;
         this.txtPort.Text = "5000";
-        
+
         // cmbResolution
         this.cmbResolution.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         this.cmbResolution.FormattingEnabled = true;
@@ -89,14 +91,21 @@ public partial class MainForm : Form
         this.cmbResolution.Name = "cmbResolution";
         this.cmbResolution.Size = new System.Drawing.Size(100, 21);
         this.cmbResolution.TabIndex = 4;
-        
-        // txtFPS
-        this.txtFPS.Location = new System.Drawing.Point(118, 61);
-        this.txtFPS.Name = "txtFPS";
-        this.txtFPS.Size = new System.Drawing.Size(72, 20);
-        this.txtFPS.TabIndex = 5;
-        this.txtFPS.Text = "30";
-        
+        this.cmbResolution.SelectedIndexChanged += new System.EventHandler(this.cmbResolution_SelectedIndexChanged);
+
+        // cmbFPS
+        this.cmbFPS.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        this.cmbFPS.FormattingEnabled = true;
+        this.cmbFPS.Items.AddRange(new object[] {
+            "15",
+            "30",
+            "60"});
+        this.cmbFPS.Location = new System.Drawing.Point(118, 61);
+        this.cmbFPS.Name = "cmbFPS";
+        this.cmbFPS.Size = new System.Drawing.Size(72, 21);
+        this.cmbFPS.TabIndex = 5;
+        this.cmbFPS.SelectedIndexChanged += new System.EventHandler(this.cmbFPS_SelectedIndexChanged);
+
         // cmbCompression
         this.cmbCompression.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         this.cmbCompression.FormattingEnabled = true;
@@ -107,7 +116,8 @@ public partial class MainForm : Form
         this.cmbCompression.Name = "cmbCompression";
         this.cmbCompression.Size = new System.Drawing.Size(100, 21);
         this.cmbCompression.TabIndex = 6;
-        
+        this.cmbCompression.SelectedIndexChanged += new System.EventHandler(this.cmbCompression_SelectedIndexChanged);
+
         // btnStart
         this.btnStart.Location = new System.Drawing.Point(12, 142);
         this.btnStart.Name = "btnStart";
@@ -116,7 +126,7 @@ public partial class MainForm : Form
         this.btnStart.Text = "Start";
         this.btnStart.UseVisualStyleBackColor = true;
         this.btnStart.Click += new System.EventHandler(this.btnStart_Click);
-        
+
         // cmbDisplay
         this.cmbDisplay.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         this.cmbDisplay.FormattingEnabled = true;
@@ -124,7 +134,7 @@ public partial class MainForm : Form
         this.cmbDisplay.Name = "cmbDisplay";
         this.cmbDisplay.Size = new System.Drawing.Size(121, 21);
         this.cmbDisplay.TabIndex = 9;
-        
+
         // lblDisplay
         this.lblDisplay.AutoSize = true;
         this.lblDisplay.Location = new System.Drawing.Point(12, 117);
@@ -132,7 +142,7 @@ public partial class MainForm : Form
         this.lblDisplay.Size = new System.Drawing.Size(42, 13);
         this.lblDisplay.TabIndex = 10;
         this.lblDisplay.Text = "Display:";
-        
+
         // lblCompressionType
         this.lblCompressionType.AutoSize = true;
         this.lblCompressionType.Location = new System.Drawing.Point(118, 90);
@@ -140,7 +150,7 @@ public partial class MainForm : Form
         this.lblCompressionType.Size = new System.Drawing.Size(97, 13);
         this.lblCompressionType.TabIndex = 11;
         this.lblCompressionType.Text = "Compression Type:";
-        
+
         // trkCompressionLevel
         this.trkCompressionLevel.Location = new System.Drawing.Point(12, 171);
         this.trkCompressionLevel.Maximum = 100;
@@ -149,7 +159,7 @@ public partial class MainForm : Form
         this.trkCompressionLevel.Size = new System.Drawing.Size(178, 45);
         this.trkCompressionLevel.TabIndex = 12;
         this.trkCompressionLevel.Value = 50;
-        
+
         // lblCompressionLevel
         this.lblCompressionLevel.AutoSize = true;
         this.lblCompressionLevel.Location = new System.Drawing.Point(196, 171);
@@ -157,7 +167,7 @@ public partial class MainForm : Form
         this.lblCompressionLevel.Size = new System.Drawing.Size(94, 13);
         this.lblCompressionLevel.TabIndex = 13;
         this.lblCompressionLevel.Text = "Compression Level:";
-        
+
         // MainForm
         this.ClientSize = new System.Drawing.Size(784, 561);
         this.Controls.Add(this.lblCompressionLevel);
@@ -167,7 +177,7 @@ public partial class MainForm : Form
         this.Controls.Add(this.cmbDisplay);
         this.Controls.Add(this.btnStart);
         this.Controls.Add(this.cmbCompression);
-        this.Controls.Add(this.txtFPS);
+        this.Controls.Add(this.cmbFPS);
         this.Controls.Add(this.cmbResolution);
         this.Controls.Add(this.txtPort);
         this.Controls.Add(this.txtIPAddress);
@@ -181,7 +191,7 @@ public partial class MainForm : Form
         this.PerformLayout();
     }
 
-     private void MainForm_Load(object sender, EventArgs e)
+    private void MainForm_Load(object sender, EventArgs e)
     {
         // Load available displays into the ComboBox
         for (int i = 0; i < Screen.AllScreens.Length; i++)
@@ -193,9 +203,13 @@ public partial class MainForm : Form
         // Set default compression format
         cmbCompression.SelectedIndex = 0;
         cmbResolution.SelectedIndex = 0;
+        cmbFPS.SelectedIndex = 1; // Default to 30 FPS
 
         // Set the compression quality based on the trackbar value
         compressionQuality = trkCompressionLevel.Value;
+
+        // Set initial FPS value
+        fps = int.Parse(cmbFPS.SelectedItem.ToString());
 
         // Add event handler for the compression level slider
         trkCompressionLevel.Scroll += new EventHandler(trkCompressionLevel_Scroll);
@@ -205,6 +219,53 @@ public partial class MainForm : Form
     {
         compressionQuality = trkCompressionLevel.Value;
         Console.WriteLine($"Compression Quality Changed: {compressionQuality}");
+    }
+
+    private void cmbCompression_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (cmbCompression.SelectedItem.ToString() == "JPEG")
+        {
+            compressionFormat = ImageFormat.Jpeg;
+        }
+        else if (cmbCompression.SelectedItem.ToString() == "PNG")
+        {
+            compressionFormat = ImageFormat.Png;
+        }
+    }
+
+    private void cmbResolution_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        UpdateResolution();
+    }
+
+    private void UpdateResolution()
+    {
+        if (cmbResolution.SelectedItem != null)
+        {
+            // Parse the selected resolution
+            string[] dimensions = cmbResolution.SelectedItem.ToString().Split('x');
+            if (dimensions.Length == 2 &&
+                int.TryParse(dimensions[0], out screenWidth) &&
+                int.TryParse(dimensions[1], out screenHeight))
+            {
+                Console.WriteLine($"Resolution changed to: {screenWidth}x{screenHeight}");
+                // Apply the resolution change
+                // You can add your logic here to handle the resolution change
+            }
+            else
+            {
+                Console.WriteLine("Invalid resolution format.");
+            }
+        }
+    }
+
+    private void cmbFPS_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (cmbFPS.SelectedItem != null)
+        {
+            fps = int.Parse(cmbFPS.SelectedItem.ToString());
+            Console.WriteLine($"FPS changed to: {fps}");
+        }
     }
 
     private async void btnStart_Click(object sender, EventArgs e)
@@ -273,7 +334,7 @@ public partial class MainForm : Form
                     MessageBox.Show($"Server stream error: {ex.Message}");
                     break;
                 }
-                await Task.Delay(1000 / int.Parse(txtFPS.Text), cancellationToken);
+                await Task.Delay(1000 / fps, cancellationToken);
             }
         }
     }
@@ -369,12 +430,13 @@ public partial class MainForm : Form
 
         base.OnFormClosing(e);
     }
+
     private System.Windows.Forms.RadioButton rbServer;
     private System.Windows.Forms.RadioButton rbClient;
     private System.Windows.Forms.TextBox txtIPAddress;
     private System.Windows.Forms.TextBox txtPort;
     private System.Windows.Forms.ComboBox cmbResolution;
-    private System.Windows.Forms.TextBox txtFPS;
+    private System.Windows.Forms.ComboBox cmbFPS;
     private System.Windows.Forms.ComboBox cmbCompression;
     private System.Windows.Forms.Button btnStart;
     private System.Windows.Forms.ComboBox cmbDisplay;
@@ -382,17 +444,19 @@ public partial class MainForm : Form
     private System.Windows.Forms.Label lblCompressionType;
     private System.Windows.Forms.TrackBar trkCompressionLevel;
     private System.Windows.Forms.Label lblCompressionLevel;
-              /// <summary>
-        /// The main entry point for the application.
-        /// </summary>
-        [STAThread]
-        static void Main()
-        {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
-        }
+
+    /// <summary>
+    /// The main entry point for the application.
+    /// </summary>
+    [STAThread]
+    static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new MainForm());
+    }
 }
+
 public partial class StreamDisplayForm : Form
 {
     public StreamDisplayForm()
@@ -405,7 +469,7 @@ public partial class StreamDisplayForm : Form
         this.pbStream = new System.Windows.Forms.PictureBox();
         ((System.ComponentModel.ISupportInitialize)(this.pbStream)).BeginInit();
         this.SuspendLayout();
-        
+
         // pbStream
         this.pbStream.Dock = System.Windows.Forms.DockStyle.Fill;
         this.pbStream.Location = new System.Drawing.Point(0, 0);
@@ -413,7 +477,7 @@ public partial class StreamDisplayForm : Form
         this.pbStream.Size = new System.Drawing.Size(800, 450);
         this.pbStream.TabIndex = 0;
         this.pbStream.TabStop = false;
-        
+
         // StreamDisplayForm
         this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
