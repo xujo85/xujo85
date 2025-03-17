@@ -1,0 +1,107 @@
+using LibVLCSharp.Shared;
+using LibVLCSharp.WinForms;
+
+namespace VideoStream
+{
+    public partial class Form1 : Form
+    {
+        private LibVLC _libVLC;
+        private MediaPlayer _mediaPlayer1;
+        private MediaPlayer _mediaPlayer2;
+        private MediaPlayer _mediaPlayer3;
+        private MediaPlayer _mediaPlayer4;
+        private MediaPlayer _mediaPlayer5;
+        private MediaPlayer _mediaPlayer6;
+        public Form1()
+        {
+            InitializeComponent();
+            Core.Initialize();
+
+            // Initialize and configure LibVLC
+            _libVLC = new LibVLC();
+            _mediaPlayer1 = new MediaPlayer(_libVLC);
+            _mediaPlayer2 = new MediaPlayer(_libVLC);
+            _mediaPlayer3 = new MediaPlayer(_libVLC);
+            _mediaPlayer4 = new MediaPlayer(_libVLC);
+            _mediaPlayer5 = new MediaPlayer(_libVLC);
+            _mediaPlayer6 = new MediaPlayer(_libVLC);
+
+
+            // Create and configure the VideoView control
+            var videoView1 = new VideoView
+            {
+                Dock = DockStyle.Fill,
+                MediaPlayer = _mediaPlayer1
+            };
+            var videoView2 = new VideoView
+            {
+                Dock = DockStyle.Fill,
+                MediaPlayer = _mediaPlayer2
+            };
+            var videoView3 = new VideoView
+            {
+                Dock = DockStyle.Fill,
+                MediaPlayer = _mediaPlayer3
+            };
+            var videoView4 = new VideoView
+            {
+                Dock = DockStyle.Fill,
+                MediaPlayer = _mediaPlayer4
+            };
+            var videoView5 = new VideoView
+            {
+                Dock = DockStyle.Fill,
+                MediaPlayer = _mediaPlayer5
+            };
+            var videoView6 = new VideoView
+            {
+                Dock = DockStyle.Fill,
+                MediaPlayer = _mediaPlayer6
+            };
+
+            // Add the VideoView control to the panel
+            video1.Controls.Add(videoView1);
+            video2.Controls.Add(videoView2);
+            video3.Controls.Add(videoView3);
+            video4.Controls.Add(videoView4);
+            video5.Controls.Add(videoView5);
+            video6.Controls.Add(videoView6);
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            // Load and start playing the video
+            var media1 = new Media(_libVLC, new Uri("C:/hatsune.mp4"));
+            var media2 = new Media(_libVLC, new Uri("C:/hatsune.mp4"));
+            var media3 = new Media(_libVLC, new Uri("C:/hatsune.mp4"));
+            var media4 = new Media(_libVLC, new Uri("C:/hatsune.mp4"));
+            var media5 = new Media(_libVLC, new Uri("C:/hatsune.mp4"));
+            var media6 = new Media(_libVLC, new Uri("C:/hatsune.mp4"));
+
+            _mediaPlayer1.Play(media1);
+            //_mediaPlayer1.ToggleMute();
+            //_mediaPlayer2.Play(media2);
+            //_mediaPlayer2.ToggleMute();
+            //_mediaPlayer3.Play(media3);
+            //_mediaPlayer3.ToggleMute();
+            //_mediaPlayer4.Play(media4);
+            //_mediaPlayer4.ToggleMute();
+            //_mediaPlayer5.Play(media5);
+            //_mediaPlayer5.ToggleMute();
+            //_mediaPlayer6.Play(media6);
+            //_mediaPlayer6.ToggleMute();
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            _mediaPlayer1.Dispose();
+            _mediaPlayer2.Dispose();
+            _mediaPlayer3.Dispose();
+            _mediaPlayer4.Dispose();
+            _mediaPlayer5.Dispose();
+            _mediaPlayer6.Dispose();
+            _libVLC.Dispose();
+            base.OnFormClosing(e);
+        }
+    }
+}
