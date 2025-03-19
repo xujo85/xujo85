@@ -1,0 +1,205 @@
+using System;
+using System.IO;
+using System.Windows.Forms;
+
+using FlyleafLib;
+using FlyleafLib.MediaPlayer;
+
+
+namespace FlyleafGUI
+{
+    public partial class Form1 : Form
+    {
+
+        public Player Player1;
+        public Player Player2;
+        public Player Player3;
+        public Player Player4;
+        public Player Player5;
+        public Player Player6;
+        public Player Player7;
+        public Player Player8;
+        public Player Player9;
+
+
+        public Config Config;
+        public Boolean isFullscreen = false;
+
+        public Form1()
+        {
+            InitializeComponent();
+
+            Engine.Start(new EngineConfig()
+            {
+            #if DEBUG
+                LogOutput = ":debug",
+                LogLevel = FlyleafLib.LogLevel.Debug,
+                FFmpegLogLevel = Flyleaf.FFmpeg.LogLevel.Warn,
+               #endif
+
+                UIRefresh = true, // For Activity Mode usage
+                //PluginsPath = "Plugins",
+                FFmpegPath = @"C:\ffmpeg\bin",
+            });
+        
+
+            Config = new Config();
+
+            // Initializes the Player
+            Player1 = new Player();
+            Player2 = new Player();
+            Player3 = new Player();
+            Player4 = new Player();
+            Player5 = new Player();
+            Player6 = new Player();
+            Player7 = new Player();
+            Player8 = new Player();
+            Player9 = new Player();
+
+            video1.Player = Player1;
+            video2.Player = Player2;
+            video3.Player = Player3;
+            video4.Player = Player4;
+            video5.Player = Player5;
+            video6.Player = Player6;
+            video7.Player = Player7;
+            video8.Player = Player8;
+            video9.Player = Player9;
+
+           
+
+            FormClosing += (o, e) =>
+            {
+                while (Engine.Players.Count != 0)
+                    Engine.Players[0].Dispose();
+            };
+        }
+        /*  private void Player_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+          {
+              // No UI Invoke required
+
+              switch (e.PropertyName)
+              {
+                  case "CurTime":
+                      label1.Text = (new TimeSpan(flyleaf1.Player.CurTime)).ToString(@"hh\:mm\:ss\.fff");
+                      break;
+
+                  case "BufferedDuration":
+                      label2.Text = (new TimeSpan(flyleaf1.Player.BufferedDuration)).ToString(@"hh\:mm\:ss\.fff");
+                      break;
+
+                  case "Status":
+                      label6.Text = flyleaf1.Player.Status.ToString();
+                      break;
+              }
+
+          }
+        */
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            Stream customInput1 = new FileStream("video.mp4", FileMode.Open);
+            Stream customInput2 = new FileStream("video2.mp4", FileMode.Open);
+            // Stream customInput3 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+            //Stream customInput4 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+            // Stream customInput5 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+            // Stream customInput6 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+            // Stream customInput7 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+            // Stream customInput8 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+            //Stream customInput9 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+
+            //Stream customInput2 = new FileStream("c:/hatsune.mp4", FileMode.Open);
+
+            Player1.OpenAsync(customInput1);
+            Player1.Audio.ToggleMute();
+
+            Player2.OpenAsync(customInput2);
+            Player2.Audio.ToggleMute();
+
+           /* Player3.OpenAsync(customInput1);
+            Player3.Audio.ToggleMute();
+
+            Player4.OpenAsync(customInput1);
+            Player4.Audio.ToggleMute();
+
+            Player5.OpenAsync(customInput1);
+            Player5.Audio.ToggleMute();
+
+            Player6.OpenAsync(customInput1);
+            Player6.Audio.ToggleMute();
+
+            Player7.OpenAsync(customInput1);
+            Player7.Audio.ToggleMute();
+
+            Player8.OpenAsync(customInput1);
+            Player1.Audio.ToggleMute();
+
+            Player9.OpenAsync(customInput1);
+            Player9.Audio.ToggleMute();
+            // Sample using a 'custom' IO stream
+            //Player2.OpenAsync(customInput);
+
+            // Testing Replica (Don't set flyleaf2.Player in the constructor)
+            // Player.renderer.SetReplica(flyleaf2.Handle);
+
+            // Replica with any Handle (if you don't really need a FlyleafHost)
+            //Player.renderer.SetChildHandle(pnlReplica.Handle);
+           */
+        }
+
+        private void video1_MouseDown_1(object sender, MouseEventArgs e)
+        {
+            if (Player1.IsPlaying)
+            {
+                Player1.Pause();
+            }
+            else if (!Player1.IsPlaying)
+            {
+                Player1.Play();
+            }
+        }
+
+        private void video1_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            if (!isFullscreen)
+            {
+                Player1.FullScreen();
+                isFullscreen = true;
+            }
+            else if (isFullscreen)
+            {
+                Player1.NormalScreen();
+                isFullscreen = false;
+            }
+        }
+
+        private void video2_DoubleClick(object sender, EventArgs e)
+        {
+            if (!isFullscreen)
+            {
+                Player2.FullScreen();
+                isFullscreen = true;
+            }
+            else if (isFullscreen)
+            {
+                Player2.NormalScreen();
+                isFullscreen = false;
+            }
+        }
+
+        private void video2_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (Player2.IsPlaying)
+            {
+                Player2.Pause();
+            }
+            else if (!Player2.IsPlaying)
+            {
+                Player2.Play();
+            }
+        }
+    }
+}
+
+
+
+
